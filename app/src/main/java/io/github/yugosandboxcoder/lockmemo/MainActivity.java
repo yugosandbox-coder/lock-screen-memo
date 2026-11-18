@@ -171,7 +171,8 @@ public class MainActivity extends Activity implements Updater.Listener {
         musicStatus = text("", 15, 0xFF55555F);
         box.addView(musicStatus, margin(4, 6));
         box.addView(text("通知や音楽の操作を見たいときは、メモの画面を上にスワイプすると、メモが上へ片付いて"
-                + "いつものロック画面が出ます。メモは、通知の「ロック画面メモ」を押すか、次に画面を点けたときに戻ります。",
+                + "いつものロック画面が出ます。メモは、通知の「タップでメモを表示」を押すか、次に画面を点けたときに戻ります。"
+                + "この通知は、ロックを解除したり画面を消したりすると消えます。",
                 14, 0xFF77777F), margin(0, 8));
         musicToggle = button("", false, new View.OnClickListener() {
             public void onClick(View v) {
@@ -293,7 +294,7 @@ public class MainActivity extends Activity implements Updater.Listener {
 
         boolean notifyOn = notificationsEnabled();
         notifyStatus.setText(notifyOn
-                ? "通知: 許可済み（ロック画面の通知「ロック画面メモ」を押すとメモが戻ります）"
+                ? "通知: 許可済み（ロック画面が出ている間だけ「タップでメモを表示」の通知が出ます）"
                 : "通知: 未許可（片付けたメモを呼び戻す通知と、更新のお知らせが出ません）");
         notifyStatus.setTextColor(notifyOn ? OK_COLOR : WARN_COLOR);
         notifyButton.setVisibility(notifyOn ? View.GONE : View.VISIBLE);
