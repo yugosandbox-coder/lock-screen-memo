@@ -150,13 +150,17 @@ public class LockMemoService extends Service {
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
+        // 押すとメモを表示する。上にスワイプしてメモを片付けたあと、ロック画面の通知から呼び戻せる
+        Intent note = new Intent(this, NoteActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
         PendingIntent pi = PendingIntent.getActivity(
-                this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
+                this, 0, note, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_pen)
-                .setContentTitle("ロック画面メモ 動作中")
-                .setContentText("タップで設定を開きます")
+                .setContentTitle("ロック画面メモ")
+                .setContentText("タップでメモを表示")
                 .setContentIntent(pi)
+                .setVisibility(Notification.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .build();
     }

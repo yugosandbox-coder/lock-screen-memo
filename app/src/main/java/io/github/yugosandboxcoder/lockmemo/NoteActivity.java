@@ -64,9 +64,10 @@ public class NoteActivity extends Activity implements DrawView.Listener {
     private DrawView drawView;
     private ImageView penButton;
     private View unlockButton;
-    private View peekButton;
-    private float swipeDownX;
+    private FrameLayout sheet;      // メモ全体。上にスワイプすると、これが上へ滑って消える
+    private TextView swipeHint;
     private float swipeDownY;
+    private boolean sheetLeaving;
     private LinearLayout palette;
     private View textPanel;
     private EditText editText;
@@ -127,66 +128,76 @@ public class NoteActivity extends Activity implements DrawView.Listener {
 
         root = new FrameLayout(this);
         root.setBackgroundColor(Color.BLACK);
+        sheet = new FrameLayout(this);
 
         background = new BackgroundView(this);
-        root.addView(background, matchParent());
+        sheet.addView(background, matchParent());
 
         clock = new ClockView(this);
-        root.addView(clock, new FrameLayout.LayoutParams(
+        sheet.addView(clock, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
         drawView = new DrawView(this);
         drawView.setListener(this);
         drawView.setSizeLevel(sizeLevel);
         drawView.setTextSizeSp(Prefs.getTextSize(this));
-        root.addView(drawView, matchParent());
+        sheet.addView(drawView, matchParent());
 
         unlockButton = buildUnlockButton();
-        root.addView(unlockButton, new FrameLayout.LayoutParams(dp(52), dp(52),
+        sheet.addView(unlockButton, new FrameLayout.LayoutParams(dp(52), dp(52),
                 Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
 
         penButton = buildPenButton();
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(dp(50), dp(50),
                 Gravity.BOTTOM | Gravity.END);
         plp.rightMargin = dp(20);
-        root.addView(penButton, plp);
+        sheet.addView(penButton, plp);
 
-        peekButton = buildPeekButton();
-        FrameLayout.LayoutParams klp = new FrameLayout.LayoutParams(dp(50), dp(50),
-                Gravity.BOTTOM | Gravity.START);
-        klp.leftMargin = dp(20);
-        root.addView(peekButton, klp);
+        // 1 行の案内（見るだけのモードのときだけ出す）
+        swipeHint = new TextView(this);
+        swipeHint.setText("上にスワイプでロック画面に戻る");
+        swipeHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        swipeHint.setSingleLine(true);
+        swipeHint.setGravity(Gravity.CENTER);
+        sheet.addView(swipeHint, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
 
-        // 見るだけのモードで上にスワイプ → メモを閉じて、本物のロック画面（通知・音楽など）を見せる。
+        // 見るだけのモードで上にスワイプ → メモが指について上へ動き、離すと滑って消えて、
+        // 元のロック画面（通知・音楽など）が出る。途中で下へ戻せば、メモも降りてきて元に戻る。
         // 書いている最中は DrawView がタッチを受け取るので、ここには来ない。
         root.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent e) {
-                if (editing) return false;
-                int action = e.getActionMasked();
-                if (action == MotionEvent.ACTION_DOWN) {
-                    swipeDownX = e.getX();
-                    swipeDownY = e.getY();
-                } else if (action == MotionEvent.ACTION_UP) {
-                    float dx = e.getX() - swipeDownX;
-                    float dy = e.getY() - swipeDownY;
-                    if (dy < -dp(90) && Math.abs(dy) > Math.abs(dx) * 1.5f) {
-                        showRealLockScreen();
-                    }
+                if (editing || sheetLeaving) return false;
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        swipeDownY = e.getY();
+                        sheet.animate().cancel();
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        // 上方向にだけ、指についてくる
+                        sheet.setTranslationY(Math.min(0f, e.getY() - swipeDownY));
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        settleSheet();
+                        return true;
+                    default:
+                        return true;
                 }
-                return true;
             }
         });
 
         palette = buildPalette();
         palette.setVisibility(View.INVISIBLE);
-        root.addView(palette, new FrameLayout.LayoutParams(
+        sheet.addView(palette, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
                 Gravity.TOP | Gravity.START));
 
         textPanel = buildTextPanel();
         textPanel.setVisibility(View.GONE);
-        root.addView(textPanel, new FrameLayout.LayoutParams(
+        sheet.addView(textPanel, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
         // 画面の端（ステータスバーの下・ナビゲーションバーの下）まで描く
@@ -212,6 +223,7 @@ public class NoteActivity extends Activity implements DrawView.Listener {
 
         applyInsets();
         applyBackgroundStyle();
+        root.addView(sheet, matchParent());
         setContentView(root);
         setEditMode(false);
     }
@@ -222,6 +234,8 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         setIntent(intent);
         // 画面を点けるたびに、必ず閲覧モードで最新の背景を表示する
         if (editing) setEditMode(false);
+        sheet.animate().cancel();
+        sheet.setTranslationY(0f);
         applyBackgroundStyle();
     }
 
@@ -263,9 +277,22 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         }
     }
 
-    /** メモを閉じて、いつものロック画面を見せる。メモは次に画面を点けたときにまた出る */
-    private void showRealLockScreen() {
-        finishAndSave();
+    /** 指を離したとき：十分に上へ動かしていればメモを上へ送り出して閉じ、足りなければ元の位置へ戻す */
+    private void settleSheet() {
+        float moved = -sheet.getTranslationY();
+        float need = Math.min(root.getHeight() * 0.18f, dp(140));
+        if (moved > need && root.getHeight() > 0) {
+            sheetLeaving = true;
+            sheet.animate().translationY(-root.getHeight()).setDuration(180).withEndAction(new Runnable() {
+                @Override
+                public void run() {
+                    // メモを閉じると、元のロック画面が出る。メモは通知から、または次に画面を点けたときに戻る
+                    finishAndSave();
+                }
+            });
+        } else {
+            sheet.animate().translationY(0f).setDuration(150);
+        }
     }
 
     private void finishAndSave() {
@@ -300,6 +327,12 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         styledBg = bg;
 
         clock.setInk(Backgrounds.clockInk(bg));
+        swipeHint.setTextColor((Backgrounds.clockInk(bg) & 0x00FFFFFF) | 0xB3000000);
+        if (bg == Prefs.BG_PHOTO) {
+            swipeHint.setShadowLayer(dp(2), 0, dp(1), 0xAA000000);
+        } else {
+            swipeHint.setShadowLayer(0, 0, 0, 0);
+        }
         // 写真の上では文字に影を付けて読みやすくする（紙の上では付けない）
         drawView.setTextShadow(bg == Prefs.BG_PHOTO);
         // 背景に合わせて最初のペン色を決める
@@ -336,16 +369,16 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         clock.setLayoutParams(clp);
 
         FrameLayout.LayoutParams ulp = (FrameLayout.LayoutParams) unlockButton.getLayoutParams();
-        ulp.bottomMargin = insetBottom + dp(24);
+        ulp.bottomMargin = insetBottom + dp(30);
         unlockButton.setLayoutParams(ulp);
 
         FrameLayout.LayoutParams plp = (FrameLayout.LayoutParams) penButton.getLayoutParams();
         plp.bottomMargin = insetBottom + dp(88);
         penButton.setLayoutParams(plp);
 
-        FrameLayout.LayoutParams klp = (FrameLayout.LayoutParams) peekButton.getLayoutParams();
-        klp.bottomMargin = insetBottom + dp(88);
-        peekButton.setLayoutParams(klp);
+        FrameLayout.LayoutParams hlp = (FrameLayout.LayoutParams) swipeHint.getLayoutParams();
+        hlp.bottomMargin = insetBottom + dp(4);
+        swipeHint.setLayoutParams(hlp);
 
         textPanel.setPadding(dp(10), insetTop + dp(8), dp(6), dp(8));
         placePalette();
@@ -532,20 +565,6 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         });
     }
 
-    /** ベルのボタン：メモを閉じて、通知や音楽が出ている本物のロック画面を見せる */
-    private View buildPeekButton() {
-        GradientDrawable bg = new GradientDrawable();
-        bg.setShape(GradientDrawable.OVAL);
-        bg.setColor(0x66000000);
-        bg.setStroke(dp(1), 0x66FFFFFF);
-        return makeIconButton(R.drawable.ic_bell, bg, 0xFFFFFFFF, 13, new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                showRealLockScreen();
-            }
-        });
-    }
-
     private View buildUnlockButton() {
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
@@ -703,7 +722,7 @@ public class NoteActivity extends Activity implements DrawView.Listener {
             editing = true;
             penButton.setVisibility(View.GONE);
             unlockButton.setVisibility(View.GONE);
-            peekButton.setVisibility(View.GONE);
+            swipeHint.setVisibility(View.GONE);
             palette.setVisibility(View.VISIBLE);
             placePalette();
             selectTool(DrawView.TOOL_PEN);
@@ -716,7 +735,7 @@ public class NoteActivity extends Activity implements DrawView.Listener {
             palette.setVisibility(View.INVISIBLE);
             penButton.setVisibility(View.VISIBLE);
             unlockButton.setVisibility(View.VISIBLE);
-            peekButton.setVisibility(View.VISIBLE);
+            swipeHint.setVisibility(View.VISIBLE);
             drawView.save();
         }
     }

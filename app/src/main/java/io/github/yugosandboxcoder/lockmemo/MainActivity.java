@@ -155,8 +155,9 @@ public class MainActivity extends Activity implements Updater.Listener {
         box.addView(toggleButton, margin(0, 10));
         musicStatus = text("", 15, 0xFF55555F);
         box.addView(musicStatus, margin(4, 6));
-        box.addView(text("通知や音楽の操作を見たいときは、メモの画面を上にスワイプするか、左下のベルのボタンを押すと、"
-                + "いつものロック画面に切り替わります。メモは次に画面を点けたときにまた出ます。", 14, 0xFF77777F), margin(0, 8));
+        box.addView(text("通知や音楽の操作を見たいときは、メモの画面を上にスワイプすると、メモが上へ片付いて"
+                + "いつものロック画面が出ます。メモは、通知の「ロック画面メモ」を押すか、次に画面を点けたときに戻ります。",
+                14, 0xFF77777F), margin(0, 8));
         musicToggle = button("", false, new View.OnClickListener() {
             public void onClick(View v) {
                 Prefs.setYieldToMusic(MainActivity.this, !Prefs.yieldToMusic(MainActivity.this));
