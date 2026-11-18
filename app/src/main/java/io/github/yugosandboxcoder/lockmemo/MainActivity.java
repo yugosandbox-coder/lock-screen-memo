@@ -1,6 +1,9 @@
 package io.github.yugosandboxcoder.lockmemo;
 
+import android.Manifest;
 import android.app.Activity;
+import android.app.NotificationManager;
+import android.content.pm.PackageManager;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -52,6 +55,9 @@ public class MainActivity extends Activity implements Updater.Listener {
     private TextView updateToggle;
     private TextView updateDownloadButton;
     private TextView updateBanner;
+    private TextView notifyStatus;
+    private TextView notifyButton;
+    private boolean notifyAsked;
     private TextView musicStatus;
     private TextView musicToggle;
     private TextView versionLabel;
@@ -153,6 +159,15 @@ public class MainActivity extends Activity implements Updater.Listener {
             }
         });
         box.addView(toggleButton, margin(0, 10));
+        notifyStatus = text("", 15, 0xFF55555F);
+        box.addView(notifyStatus, margin(4, 6));
+        notifyButton = button("通知を許可する", true, new View.OnClickListener() {
+            public void onClick(View v) {
+                requestNotifications();
+            }
+        });
+        box.addView(notifyButton, margin(0, 14));
+
         musicStatus = text("", 15, 0xFF55555F);
         box.addView(musicStatus, margin(4, 6));
         box.addView(text("通知や音楽の操作を見たいときは、メモの画面を上にスワイプすると、メモが上へ片付いて"
@@ -225,8 +240,12 @@ public class MainActivity extends Activity implements Updater.Listener {
     @Override
     protected void onResume() {
         super.onResume();
-        if (Prefs.isEnabled(this) && !LockMemoService.running && Settings.canDrawOverlays(this)) {
-            LockMemoService.start(this);
+        // 有効なら毎回サービスに開始を伝える（通知の許可が変わったあと、通知を出し直すためでもある）
+        if (Prefs.isEnabled(this) && Settings.canDrawOverlays(this)) {
+            try {
+                LockMemoService.start(this);
+            } catch (Exception ignored) {
+            }
         }
         buildGrid();
         refresh();
@@ -271,6 +290,13 @@ public class MainActivity extends Activity implements Updater.Listener {
                 : (isPhoto ? "写真の明るさは、見やすいように少し暗めにしてあります。" : ""));
 
         fontStatus.setText(Fonts.hasMemoFont(this) ? "読み込んだフォントを使用中" : "標準のフォント");
+
+        boolean notifyOn = notificationsEnabled();
+        notifyStatus.setText(notifyOn
+                ? "通知: 許可済み（ロック画面の通知「ロック画面メモ」を押すとメモが戻ります）"
+                : "通知: 未許可（片付けたメモを呼び戻す通知と、更新のお知らせが出ません）");
+        notifyStatus.setTextColor(notifyOn ? OK_COLOR : WARN_COLOR);
+        notifyButton.setVisibility(notifyOn ? View.GONE : View.VISIBLE);
 
         boolean yieldMusic = Prefs.yieldToMusic(this);
         musicStatus.setText(yieldMusic ? "音楽などの再生中: メモを出さない（再生の操作が見えます）"
@@ -525,6 +551,45 @@ public class MainActivity extends Activity implements Updater.Listener {
             return rotated;
         } catch (Throwable t) {
             return bmp; // メモリ不足などのときは、そのままの向きで使う
+        }
+    }
+
+    // ---------- 通知の許可 ----------
+
+    private boolean notificationsEnabled() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            return nm != null && nm.areNotificationsEnabled();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private void requestNotifications() {
+        boolean canAsk = Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                && !notifyAsked;
+        if (canAsk) {
+            notifyAsked = true; // 2 回目以降は確認が出ないことがあるので、設定画面を開く
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
+        } else {
+            openNotificationSettings();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        refresh(); // 許可された場合、通知は onResume でサービスに伝えて出し直される
+    }
+
+    private void openNotificationSettings() {
+        try {
+            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            startActivity(i);
+        } catch (Exception e) {
+            openAppDetails();
         }
     }
 

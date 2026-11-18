@@ -22,7 +22,8 @@ import android.os.IBinder;
  */
 public class LockMemoService extends Service {
 
-    private static final String CHANNEL_ID = "lockmemo_service";
+    private static final String OLD_CHANNEL_ID = "lockmemo_service";
+    private static final String CHANNEL_ID = "lockmemo_memo";
     private static final int NOTIFICATION_ID = 1;
 
     public static volatile boolean running;
@@ -145,23 +146,36 @@ public class LockMemoService extends Service {
     private Notification buildNotification() {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm != null && nm.getNotificationChannel(CHANNEL_ID) == null) {
+            // ロック画面の通知一覧に出るよう「標準」の重要度にする。音と振動は鳴らさない。
             NotificationChannel ch = new NotificationChannel(
-                    CHANNEL_ID, "ロック画面メモの常駐", NotificationManager.IMPORTANCE_LOW);
+                    CHANNEL_ID, "メモを表示（常駐）", NotificationManager.IMPORTANCE_DEFAULT);
             ch.setShowBadge(false);
+            ch.setSound(null, null);
+            ch.enableVibration(false);
+            ch.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
             nm.createNotificationChannel(ch);
+            try {
+                nm.deleteNotificationChannel(OLD_CHANNEL_ID); // 以前の、目立たない設定の分を片付ける
+            } catch (Exception ignored) {
+            }
         }
         // 押すとメモを表示する。上にスワイプしてメモを片付けたあと、ロック画面の通知から呼び戻せる
         Intent note = new Intent(this, NoteActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
         PendingIntent pi = PendingIntent.getActivity(
                 this, 0, note, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL_ID)
+        Notification.Builder b = new Notification.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_pen)
                 .setContentTitle("ロック画面メモ")
                 .setContentText("タップでメモを表示")
                 .setContentIntent(pi)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setOngoing(true)
-                .build();
+                .setOnlyAlertOnce(true)
+                .setOngoing(true);
+        if (Build.VERSION.SDK_INT >= 31) {
+            // 常駐の通知は表示が 10 秒ほど遅らされることがあるので、すぐ出すよう指定する
+            b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
+        }
+        return b.build();
     }
 }
