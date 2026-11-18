@@ -1,0 +1,112 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import source from zip
+        run: |
+          shopt -s nullglob
+          zips=( *.zip )
+          if [ ${#zips[@]} -gt 0 ]; then
+            latest=$(printf '%s\n' "${zips[@]}" | sort -V | tail -1)
+            echo "Importing $latest"
+            rm -rf "$RUNNER_TEMP/import"
+            mkdir -p "$RUNNER_TEMP/import"
+            unzip -q "$latest" -d "$RUNNER_TEMP/import"
+            settings=$(find "$RUNNER_TEMP/import" -maxdepth 2 -name settings.gradle | head -1)
+            if [ -z "$settings" ]; then
+              echo "::error::zip の中にプロジェクトが見つかりません"
+              exit 1
+            fi
+            src=$(dirname "$settings")
+            rm -rf "$src/.github" "$src/.git"
+            find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
+            cp -a "$src"/. .
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Import source from $latest" || echo "nothing to commit"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Check source
+        id: src
+        run: |
+          if [ -f settings.gradle ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::まだソースがありません。zip をアップロードするとビルドが始まります"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.src.outputs.present == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.src.outputs.present == 'true'
+        with:
+          gradle-version: '8.7'
+
+      - name: Restore signing key
+        id: key
+        if: steps.src.outputs.present == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Secret の KEYSTORE_BASE64 が未設定です。開発用の鍵でビルドだけ行い、リリースは作りません"
+          fi
+
+      - name: Build
+        if: steps.src.outputs.present == 'true'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          export VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          gradle assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk LockMemo.apk
+
+      - uses: actions/upload-artifact@v4
+        if: steps.src.outputs.present == 'true'
+        with:
+          name: LockMemo-apk
+          path: LockMemo.apk
+
+      - name: Release
+        if: steps.src.outputs.present == 'true' && steps.key.outputs.present == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$VERSION_CODE" LockMemo.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$(git rev-parse HEAD)" \
+            --title "ロック画面メモ 1.$GITHUB_RUN_NUMBER" \
+            --notes "LockMemo.apk をダウンロードしてインストールしてください。すでに入れている場合は、アプリが自動で更新します。" \
+            --latest
