@@ -1,0 +1,8 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+# 署名鍵は絶対にコミットしない
+*.keystore
+*.jks

@@ -1,0 +1,61 @@
+plugins {
+    id 'com.android.application'
+}
+
+// GitHub Actions が渡す値。手元でビルドするときは空になり、開発用の値が使われる。
+def ciVersionCode = System.getenv("VERSION_CODE")
+def appVersionCode = ciVersionCode ? ciVersionCode.toInteger() : 1
+def appVersionName = ciVersionCode ? "1." + (ciVersionCode.toInteger() - 1000) : "dev"
+// 自動更新で見に行くリポジトリ（"ユーザー名/リポジトリ名"）。Actions では自動で入る。
+def updateRepo = System.getenv("GITHUB_REPOSITORY") ?: ""
+// 署名鍵。リポジトリには入れず、Actions の Secret から復元したものだけを使う。
+def ciKeystore = rootProject.file("release.keystore")
+def ciKeystorePassword = System.getenv("KEYSTORE_PASSWORD") ?: "lockmemo"
+
+android {
+    namespace 'io.github.yugosandboxcoder.lockmemo'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "io.github.yugosandboxcoder.lockmemo"
+        minSdk 27
+        targetSdk 34
+        versionCode appVersionCode
+        versionName appVersionName
+        resValue "string", "update_repo", updateRepo
+    }
+
+    buildFeatures {
+        resValues true
+    }
+
+    signingConfigs {
+        if (ciKeystore.exists()) {
+            ci {
+                storeFile ciKeystore
+                storePassword ciKeystorePassword
+                keyAlias "lockmemo"
+                keyPassword ciKeystorePassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // 鍵があるとき（公式ビルド）は毎回同じ鍵で署名する。これで上書き更新・自動更新ができる。
+            // 鍵が無いとき（フォークや手元のビルド）は Android 標準の開発用の鍵になる。
+            if (ciKeystore.exists()) {
+                signingConfig signingConfigs.ci
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+    }
+}
