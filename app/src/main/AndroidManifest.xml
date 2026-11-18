@@ -1,10 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 自動更新：GitHub のリリースを確認・ダウンロードし、このアプリ自身を更新するため -->
+    <!-- 新しい版が出ていないか GitHub に確認するため（確認だけ。ダウンロードやインストールはしない） -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -57,11 +55,6 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Shows the user's memo on the lock screen when the screen turns on" />
         </service>
-
-        <!-- 更新のインストール結果を受け取る -->
-        <receiver
-            android:name=".UpdateReceiver"
-            android:exported="false" />
 
         <receiver
             android:name=".BootReceiver"

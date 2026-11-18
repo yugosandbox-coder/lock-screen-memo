@@ -38,7 +38,7 @@ public class LockMemoService extends Service {
                 // 消灯した瞬間に、点灯はさせず先にメモ画面を用意しておく
                 // （次に点けたとき一瞬で出せるようにするため）
                 preloadNote();
-                // ついでに、アプリの更新が出ていないか確認する（6 時間に 1 回まで）
+                // ついでに、新しい版が出ていないか確認する（6 時間に 1 回まで。知らせるだけ）
                 Updater.maybeAutoCheck(LockMemoService.this);
             } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
                 refresh();
@@ -98,13 +98,13 @@ public class LockMemoService extends Service {
 
     /** 消灯時：ロックの有無を問わず、先にメモ画面を用意しておく（点灯はさせない） */
     private void preloadNote() {
-        if (!Prefs.isEnabled(this) || inCall()) return;
+        if (!Prefs.isEnabled(this) || inCall() || yieldingToMusic()) return;
         launchNote();
     }
 
     /** 点灯時：ロック中なら表示、解除済みなら閉じる */
     private void refresh() {
-        if (Prefs.isEnabled(this) && isLocked() && !inCall()) {
+        if (Prefs.isEnabled(this) && isLocked() && !inCall() && !yieldingToMusic()) {
             launchNote();
         } else {
             NoteActivity.finishNote();
@@ -114,6 +114,13 @@ public class LockMemoService extends Service {
     private boolean isLocked() {
         KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
         return km != null && km.isKeyguardLocked();
+    }
+
+    /** 音楽などの再生中で、メモを出さない設定になっているか（本物のロック画面の再生操作を見せる） */
+    private boolean yieldingToMusic() {
+        if (!Prefs.yieldToMusic(this)) return false;
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        return am != null && am.isMusicActive();
     }
 
     private boolean inCall() {

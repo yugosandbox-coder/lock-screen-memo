@@ -25,7 +25,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 
-/** 設定画面：許可、背景の選択（7種類＋写真）、時計、文字フォント、開始・停止、自動更新 */
+/** 設定画面：許可、背景の選択（7種類＋写真）、時計、文字フォント、開始・停止、更新のお知らせ */
 public class MainActivity extends Activity implements Updater.Listener {
 
     private static final int OK_COLOR = 0xFF1E8E3E;
@@ -50,8 +50,10 @@ public class MainActivity extends Activity implements Updater.Listener {
     private TextView fontStatus;
     private TextView updateStatus;
     private TextView updateToggle;
-    private TextView updateInstallButton;
-    private TextView updateAllowButton;
+    private TextView updateDownloadButton;
+    private TextView updateBanner;
+    private TextView musicStatus;
+    private TextView musicToggle;
     private TextView versionLabel;
 
     @Override
@@ -70,7 +72,15 @@ public class MainActivity extends Activity implements Updater.Listener {
         box.addView(title);
         box.addView(text("ロック画面の上にメモを表示します。ロックを解除すると消え、ホーム画面には残りません。"
                 + "右下のペンのボタンから手書き・文字入力・消去ができます。"
-                + "道具のパレットは、上のつまみをドラッグして好きな場所に動かせます。", 15, 0xFF55555F), margin(6, 18));
+                + "道具のパレットは、上のつまみをドラッグして好きな場所に動かせます。", 15, 0xFF55555F), margin(6, 10));
+
+        // 新しい版が出ているときだけ表示される案内
+        updateBanner = button("新しい版があります。ここを押してダウンロード", true, new View.OnClickListener() {
+            public void onClick(View v) {
+                Updater.openDownload(MainActivity.this);
+            }
+        });
+        box.addView(updateBanner, margin(0, 14));
 
         box.addView(section("① 他のアプリの上に重ねて表示（必須）"));
         overlayStatus = text("", 15, 0xFF55555F);
@@ -143,6 +153,17 @@ public class MainActivity extends Activity implements Updater.Listener {
             }
         });
         box.addView(toggleButton, margin(0, 10));
+        musicStatus = text("", 15, 0xFF55555F);
+        box.addView(musicStatus, margin(4, 6));
+        box.addView(text("通知や音楽の操作を見たいときは、メモの画面を上にスワイプするか、左下のベルのボタンを押すと、"
+                + "いつものロック画面に切り替わります。メモは次に画面を点けたときにまた出ます。", 14, 0xFF77777F), margin(0, 8));
+        musicToggle = button("", false, new View.OnClickListener() {
+            public void onClick(View v) {
+                Prefs.setYieldToMusic(MainActivity.this, !Prefs.yieldToMusic(MainActivity.this));
+                refresh();
+            }
+        });
+        box.addView(musicToggle, margin(0, 10));
         box.addView(button("今すぐ書く（試し）", false, new View.OnClickListener() {
             public void onClick(View v) {
                 Intent i = new Intent(MainActivity.this, NoteActivity.class);
@@ -154,22 +175,15 @@ public class MainActivity extends Activity implements Updater.Listener {
         box.addView(section("⑥ アプリの更新"));
         updateStatus = text("", 15, 0xFF55555F);
         box.addView(updateStatus, margin(2, 6));
-        box.addView(text("新しい版が GitHub に公開されると、自動でダウンロードして更新します。"
-                + "機種によっては確認の画面が 1 回出ます。通信するのは GitHub だけで、メモの内容は送りません。",
-                14, 0xFF77777F), margin(0, 8));
-        updateInstallButton = button("更新をインストール", true, new View.OnClickListener() {
+        box.addView(text("新しい版が GitHub に公開されると、通知でお知らせします。押すとブラウザーで配布ファイルが開くので、"
+                + "ダウンロードしてインストールしてください（メモや設定はそのまま残ります）。"
+                + "通信するのは GitHub だけで、メモの内容は送りません。", 14, 0xFF77777F), margin(0, 8));
+        updateDownloadButton = button("新しい版をダウンロード", true, new View.OnClickListener() {
             public void onClick(View v) {
-                Updater.startConfirm(MainActivity.this);
-                refresh();
+                Updater.openDownload(MainActivity.this);
             }
         });
-        box.addView(updateInstallButton, margin(0, 8));
-        updateAllowButton = button("更新のインストールを許可する（設定を開く）", true, new View.OnClickListener() {
-            public void onClick(View v) {
-                openInstallPermission();
-            }
-        });
-        box.addView(updateAllowButton, margin(0, 8));
+        box.addView(updateDownloadButton, margin(0, 8));
         box.addView(button("今すぐ更新を確認", false, new View.OnClickListener() {
             public void onClick(View v) {
                 Updater.checkNow(MainActivity.this);
@@ -217,18 +231,14 @@ public class MainActivity extends Activity implements Updater.Listener {
         refresh();
 
         // 設定画面を開いている間は、更新の状況をすぐ画面に反映する
-        Updater.setListener(this, true);
-        if (Updater.hasPendingConfirm()) {
-            Updater.startConfirm(this); // 通知から来たとき：そのまま確認画面へ
-        } else {
-            Updater.maybeAutoCheck(this);
-        }
+        Updater.setListener(this);
+        Updater.maybeAutoCheck(this);
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        Updater.setListener(null, false);
+        Updater.setListener(null);
     }
 
     /** Updater から（別スレッドのことがある）：更新の状況が変わった */
@@ -261,25 +271,33 @@ public class MainActivity extends Activity implements Updater.Listener {
 
         fontStatus.setText(Fonts.hasMemoFont(this) ? "読み込んだフォントを使用中" : "標準のフォント");
 
+        boolean yieldMusic = Prefs.yieldToMusic(this);
+        musicStatus.setText(yieldMusic ? "音楽などの再生中: メモを出さない（再生の操作が見えます）"
+                : "音楽などの再生中: メモを出す");
+        musicToggle.setText(yieldMusic ? "再生中もメモを出すようにする" : "再生中はメモを出さないようにする");
+
         // アプリの更新
         versionLabel.setText("バージョン " + Updater.currentVersionName(this));
         boolean configured = Updater.isConfigured(this);
         boolean auto = Prefs.autoUpdate(this);
-        boolean canInstall = Updater.canInstall(this);
+        boolean hasUpdate = configured && Updater.hasUpdate(this);
         StringBuilder st = new StringBuilder();
         if (!configured) {
-            st.append("このビルドは自動更新に対応していません（GitHub で作られた版ではありません）");
+            st.append("このビルドは更新の確認に対応していません（GitHub で作られた版ではありません）");
         } else {
-            st.append(auto ? "自動更新: オン" : "自動更新: オフ");
+            st.append(auto ? "更新のお知らせ: オン" : "更新のお知らせ: オフ");
             st.append("　／　今のバージョン ").append(Updater.currentVersionName(this));
-            String status = Prefs.getUpdateStatus(this);
-            if (status.length() > 0) st.append("\n").append(status);
-            if (!canInstall) st.append("\nこのアプリによる更新のインストールが、まだ許可されていません");
+            if (Updater.isBusy()) {
+                st.append("\n確認中…");
+            } else {
+                String status = Prefs.getUpdateStatus(this);
+                if (status.length() > 0) st.append("\n").append(status);
+            }
         }
         updateStatus.setText(st.toString());
-        updateToggle.setText(auto ? "自動更新をオフにする" : "自動更新をオンにする");
-        updateInstallButton.setVisibility(Updater.hasPendingConfirm() ? View.VISIBLE : View.GONE);
-        updateAllowButton.setVisibility(configured && !canInstall ? View.VISIBLE : View.GONE);
+        updateToggle.setText(auto ? "更新のお知らせをオフにする" : "更新のお知らせをオンにする");
+        updateDownloadButton.setVisibility(hasUpdate ? View.VISIBLE : View.GONE);
+        updateBanner.setVisibility(hasUpdate ? View.VISIBLE : View.GONE);
     }
 
     // ---------- 背景グリッド ----------
@@ -529,16 +547,6 @@ public class MainActivity extends Activity implements Updater.Listener {
     private void openOverlaySettings() {
         try {
             startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())));
-        } catch (Exception e) {
-            openAppDetails();
-        }
-    }
-
-    /** 「この提供元のアプリを許可」の設定を開く（自動更新のインストールに必要） */
-    private void openInstallPermission() {
-        try {
-            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                     Uri.parse("package:" + getPackageName())));
         } catch (Exception e) {
             openAppDetails();

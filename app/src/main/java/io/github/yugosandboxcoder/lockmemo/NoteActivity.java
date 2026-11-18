@@ -64,6 +64,9 @@ public class NoteActivity extends Activity implements DrawView.Listener {
     private DrawView drawView;
     private ImageView penButton;
     private View unlockButton;
+    private View peekButton;
+    private float swipeDownX;
+    private float swipeDownY;
     private LinearLayout palette;
     private View textPanel;
     private EditText editText;
@@ -147,6 +150,33 @@ public class NoteActivity extends Activity implements DrawView.Listener {
                 Gravity.BOTTOM | Gravity.END);
         plp.rightMargin = dp(20);
         root.addView(penButton, plp);
+
+        peekButton = buildPeekButton();
+        FrameLayout.LayoutParams klp = new FrameLayout.LayoutParams(dp(50), dp(50),
+                Gravity.BOTTOM | Gravity.START);
+        klp.leftMargin = dp(20);
+        root.addView(peekButton, klp);
+
+        // 見るだけのモードで上にスワイプ → メモを閉じて、本物のロック画面（通知・音楽など）を見せる。
+        // 書いている最中は DrawView がタッチを受け取るので、ここには来ない。
+        root.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent e) {
+                if (editing) return false;
+                int action = e.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    swipeDownX = e.getX();
+                    swipeDownY = e.getY();
+                } else if (action == MotionEvent.ACTION_UP) {
+                    float dx = e.getX() - swipeDownX;
+                    float dy = e.getY() - swipeDownY;
+                    if (dy < -dp(90) && Math.abs(dy) > Math.abs(dx) * 1.5f) {
+                        showRealLockScreen();
+                    }
+                }
+                return true;
+            }
+        });
 
         palette = buildPalette();
         palette.setVisibility(View.INVISIBLE);
@@ -233,6 +263,11 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         }
     }
 
+    /** メモを閉じて、いつものロック画面を見せる。メモは次に画面を点けたときにまた出る */
+    private void showRealLockScreen() {
+        finishAndSave();
+    }
+
     private void finishAndSave() {
         if (editing) setEditMode(false);
         drawView.save();
@@ -307,6 +342,10 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         FrameLayout.LayoutParams plp = (FrameLayout.LayoutParams) penButton.getLayoutParams();
         plp.bottomMargin = insetBottom + dp(88);
         penButton.setLayoutParams(plp);
+
+        FrameLayout.LayoutParams klp = (FrameLayout.LayoutParams) peekButton.getLayoutParams();
+        klp.bottomMargin = insetBottom + dp(88);
+        peekButton.setLayoutParams(klp);
 
         textPanel.setPadding(dp(10), insetTop + dp(8), dp(6), dp(8));
         placePalette();
@@ -493,6 +532,20 @@ public class NoteActivity extends Activity implements DrawView.Listener {
         });
     }
 
+    /** ベルのボタン：メモを閉じて、通知や音楽が出ている本物のロック画面を見せる */
+    private View buildPeekButton() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.OVAL);
+        bg.setColor(0x66000000);
+        bg.setStroke(dp(1), 0x66FFFFFF);
+        return makeIconButton(R.drawable.ic_bell, bg, 0xFFFFFFFF, 13, new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showRealLockScreen();
+            }
+        });
+    }
+
     private View buildUnlockButton() {
         GradientDrawable bg = new GradientDrawable();
         bg.setShape(GradientDrawable.OVAL);
@@ -650,6 +703,7 @@ public class NoteActivity extends Activity implements DrawView.Listener {
             editing = true;
             penButton.setVisibility(View.GONE);
             unlockButton.setVisibility(View.GONE);
+            peekButton.setVisibility(View.GONE);
             palette.setVisibility(View.VISIBLE);
             placePalette();
             selectTool(DrawView.TOOL_PEN);
@@ -662,6 +716,7 @@ public class NoteActivity extends Activity implements DrawView.Listener {
             palette.setVisibility(View.INVISIBLE);
             penButton.setVisibility(View.VISIBLE);
             unlockButton.setVisibility(View.VISIBLE);
+            peekButton.setVisibility(View.VISIBLE);
             drawView.save();
         }
     }

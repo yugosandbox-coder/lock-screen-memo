@@ -35,6 +35,10 @@ public final class Prefs {
     public static final String KEY_AUTO_UPDATE = "auto_update";
     public static final String KEY_UPDATE_LAST_CHECK = "update_last_check";
     public static final String KEY_UPDATE_STATUS = "update_status";
+    public static final String KEY_UPDATE_CODE = "update_code";
+    public static final String KEY_UPDATE_URL = "update_url";
+    public static final String KEY_UPDATE_NOTIFIED = "update_notified";
+    public static final String KEY_YIELD_TO_MUSIC = "yield_to_music";
 
     public static final String KEY_PALETTE_X = "palette_x"; // 0..1（左〜右）
     public static final String KEY_PALETTE_Y = "palette_y"; // 0..1（上〜下）
@@ -109,6 +113,36 @@ public final class Prefs {
 
     public static void setUpdateStatus(Context c, String v) {
         sp(c).edit().putString(KEY_UPDATE_STATUS, v).apply();
+    }
+
+    public static long getUpdateCode(Context c) {
+        return sp(c).getLong(KEY_UPDATE_CODE, 0L);
+    }
+
+    public static String getUpdateUrl(Context c) {
+        return sp(c).getString(KEY_UPDATE_URL, "");
+    }
+
+    /** 見つかった新しい版（無ければ code = 0, url = ""） */
+    public static void setUpdateAvailable(Context c, long code, String url) {
+        sp(c).edit().putLong(KEY_UPDATE_CODE, code).putString(KEY_UPDATE_URL, url).apply();
+    }
+
+    public static long getUpdateNotifiedCode(Context c) {
+        return sp(c).getLong(KEY_UPDATE_NOTIFIED, 0L);
+    }
+
+    public static void setUpdateNotifiedCode(Context c, long code) {
+        sp(c).edit().putLong(KEY_UPDATE_NOTIFIED, code).apply();
+    }
+
+    /** 音楽などの再生中は、メモを出さずに本物のロック画面（再生の操作）を見せるか */
+    public static boolean yieldToMusic(Context c) {
+        return sp(c).getBoolean(KEY_YIELD_TO_MUSIC, true);
+    }
+
+    public static void setYieldToMusic(Context c, boolean v) {
+        sp(c).edit().putBoolean(KEY_YIELD_TO_MUSIC, v).apply();
     }
 
     public static float getPaletteX(Context c) {

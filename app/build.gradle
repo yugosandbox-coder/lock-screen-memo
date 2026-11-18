@@ -48,6 +48,13 @@ android {
                 signingConfig signingConfigs.ci
             }
         }
+        // 配布用。デバッグ機能を含まない正式なビルド（公式ビルドではこちらを公開する）
+        release {
+            minifyEnabled false
+            if (ciKeystore.exists()) {
+                signingConfig signingConfigs.ci
+            }
+        }
     }
 
     compileOptions {
@@ -57,5 +64,6 @@ android {
 
     lint {
         abortOnError false
+        checkReleaseBuilds false
     }
 }
