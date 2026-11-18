@@ -7,6 +7,7 @@ on:
       - '**.md'
       - 'LICENSE'
       - 'docs/**'
+      - '.github/**'
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
 
       - name: Import source from zip
         run: |
@@ -90,8 +93,13 @@ jobs:
         run: |
           export VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-          gradle assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk LockMemo.apk
+          if [ -f release.keystore ] && gradle assembleRelease && [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk LockMemo.apk
+          else
+            echo "::warning::正式ビルドを作れなかったため、開発用ビルドで代用します"
+            gradle assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk LockMemo.apk
+          fi
 
       - uses: actions/upload-artifact@v4
         if: steps.src.outputs.present == 'true'
@@ -108,5 +116,5 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --target "$(git rev-parse HEAD)" \
             --title "ロック画面メモ 1.$GITHUB_RUN_NUMBER" \
-            --notes "LockMemo.apk をダウンロードしてインストールしてください。すでに入れている場合は、アプリが自動で更新します。" \
+            --notes "LockMemo.apk をダウンロードしてインストールしてください。すでに入れている場合は、そのまま上書きで更新できます（メモや設定は残ります）。" \
             --latest
